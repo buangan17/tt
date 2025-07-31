@@ -4,7 +4,8 @@ const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
   '/backtest(.*)',
   '/bot(.*)',
-  '/profile(.*)'
+  '/profile(.*)',
+  '/blog(.*)'
 ])
 
 const isPremiumRoute = createRouteMatcher([
@@ -12,6 +13,10 @@ const isPremiumRoute = createRouteMatcher([
   '/dashboard/backtest/advanced(.*)',
   '/dashboard/bot/premium(.*)',
   '/dashboard/analytics/advanced(.*)'
+])
+
+const isAdminRoute = createRouteMatcher([
+  '/admin(.*)'
 ])
 
 const isUpgradeRoute = createRouteMatcher([
@@ -27,6 +32,17 @@ export default clerkMiddleware(async (auth, req) => {
     if (!userId) {
       return Response.redirect(new URL('/sign-in', req.url))
     }
+  }
+  
+  // Check admin access
+  if (isAdminRoute(req)) {
+    if (!userId) {
+      return Response.redirect(new URL('/sign-in', req.url))
+    }
+    
+    // For admin routes, we'll check the role in the component itself
+    // since we need to query Supabase for the user's role
+    // This is a basic check - the actual role verification happens in the admin components
   }
   
   // Check if user is trying to access premium features
