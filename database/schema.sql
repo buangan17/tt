@@ -202,8 +202,116 @@ INSERT INTO trading_pairs (symbol, base_currency, quote_currency) VALUES
 ('EUR/JPY', 'EUR', 'JPY'),
 ('GBP/JPY', 'GBP', 'JPY');
 
+-- Orders table for subscription purchases
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id) NOT NULL,
+  order_number TEXT UNIQUE NOT NULL,
+  plan_id TEXT NOT NULL,
+  plan_name TEXT NOT NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  billing_cycle TEXT NOT NULL CHECK (billing_cycle IN ('monthly', 'yearly')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'cancelled', 'failed')),
+  payment_method TEXT,
+  payment_details JSONB DEFAULT '{}',
+  notes TEXT,
+  admin_notes TEXT,
+  processed_by UUID REFERENCES users(id),
+  processed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Blog system tables
+CREATE TABLE blog_categories (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT UNIQUE NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE blog_posts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  excerpt TEXT,
+  content TEXT NOT NULL,
+  featured_image TEXT,
+  category_id UUID REFERENCES blog_categories(id),
+  author_id UUID REFERENCES users(id) NOT NULL,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+  is_featured BOOLEAN DEFAULT false,
+  meta_title TEXT,
+  meta_description TEXT,
+  tags TEXT[],
+  view_count INTEGER DEFAULT 0,
+  published_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE blog_comments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  post_id UUID REFERENCES blog_posts(id) NOT NULL,
+  user_id UUID REFERENCES users(id),
+  author_name TEXT,
+  author_email TEXT,
+  content TEXT NOT NULL,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'spam')),
+  parent_id UUID REFERENCES blog_comments(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Admin activity logs
+CREATE TABLE admin_activities (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  admin_id UUID REFERENCES users(id) NOT NULL,
+  action TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id UUID,
+  details JSONB DEFAULT '{}',
+  ip_address INET,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for performance
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_created_at ON orders(created_at);
+CREATE INDEX idx_blog_posts_status ON blog_posts(status);
+CREATE INDEX idx_blog_posts_category ON blog_posts(category_id);
+CREATE INDEX idx_blog_posts_published_at ON blog_posts(published_at);
+CREATE INDEX idx_blog_comments_post_id ON blog_comments(post_id);
+CREATE INDEX idx_admin_activities_admin_id ON admin_activities(admin_id);
+
+-- RLS Policies for new tables
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blog_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blog_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_activities ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own orders" ON orders FOR SELECT USING (user_id IN (SELECT id FROM users WHERE clerk_id = current_setting('request.jwt.claims', true)::json->>'sub'));
+CREATE POLICY "Users can create own orders" ON orders FOR INSERT WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_id = current_setting('request.jwt.claims', true)::json->>'sub'));
+
+CREATE POLICY "Published posts are viewable by everyone" ON blog_posts FOR SELECT USING (status = 'published');
+CREATE POLICY "Approved comments are viewable by everyone" ON blog_comments FOR SELECT USING (status = 'approved');
+
+-- Insert default data
+INSERT INTO blog_categories (name, slug, description) VALUES
+('Trading Tips', 'trading-tips', 'Tips dan trik trading forex untuk pemula dan profesional'),
+('Market Analysis', 'market-analysis', 'Analisis pasar forex dan prediksi pergerakan mata uang'),
+('Strategy Guide', 'strategy-guide', 'Panduan lengkap strategi trading yang profitable'),
+('Platform Updates', 'platform-updates', 'Update terbaru fitur dan peningkatan platform'),
+('Education', 'education', 'Edukasi dasar trading forex dan manajemen risiko');
+
 -- Insert default subscription plans
 INSERT INTO subscription_plans (name, description, price, billing_cycle, features, max_backtests, max_strategies) VALUES
 ('Free', 'Plan gratis dengan fitur terbatas', 0.00, 'monthly', '{"basic_backtests": true, "basic_strategies": 3}', 10, 3),
-('Premium', 'Plan premium dengan fitur lengkap', 29.99, 'monthly', '{"unlimited_backtests": true, "advanced_strategies": true, "real_time_data": true, "premium_support": true}', -1, -1),
-('Enterprise', 'Plan enterprise untuk trader profesional', 99.99, 'monthly', '{"everything": true, "priority_support": true, "custom_strategies": true, "api_access": true}', -1, -1);
+('Premium', 'Plan premium dengan fitur lengkap', 199000.00, 'monthly', '{"unlimited_backtests": true, "advanced_strategies": true, "real_time_data": true, "premium_support": true}', -1, -1),
+('Premium Yearly', 'Plan premium tahunan dengan diskon', 1990000.00, 'yearly', '{"unlimited_backtests": true, "advanced_strategies": true, "real_time_data": true, "premium_support": true}', -1, -1),
+('Professional', 'Plan profesional untuk trader advanced', 499000.00, 'monthly', '{"everything": true, "priority_support": true, "custom_strategies": true, "api_access": true}', -1, -1),
+('Professional Yearly', 'Plan profesional tahunan dengan diskon', 4990000.00, 'yearly', '{"everything": true, "priority_support": true, "custom_strategies": true, "api_access": true}', -1, -1);

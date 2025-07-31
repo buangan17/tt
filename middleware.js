@@ -8,9 +8,15 @@ const isProtectedRoute = createRouteMatcher([
 ])
 
 const isPremiumRoute = createRouteMatcher([
-  '/dashboard/premium(.*)',
-  '/backtest/advanced(.*)',
-  '/bot/strategies(.*)'
+  '/dashboard/strategies(.*)',
+  '/dashboard/backtest/advanced(.*)',
+  '/dashboard/bot/premium(.*)',
+  '/dashboard/analytics/advanced(.*)'
+])
+
+const isUpgradeRoute = createRouteMatcher([
+  '/dashboard/upgrade',
+  '/dashboard/orders'
 ])
 
 export default clerkMiddleware(async (auth, req) => {
@@ -23,15 +29,34 @@ export default clerkMiddleware(async (auth, req) => {
     }
   }
   
-  // Protect premium routes
+  // Check if user is trying to access premium features
   if (isPremiumRoute(req)) {
     if (!userId) {
       return Response.redirect(new URL('/sign-in', req.url))
     }
     
     const userRole = sessionClaims?.metadata?.role
-    if (userRole !== 'premium') {
-      return Response.redirect(new URL('/upgrade', req.url))
+    if (userRole !== 'premium' && userRole !== 'admin') {
+      return Response.redirect(new URL('/dashboard/upgrade', req.url))
+    }
+  }
+  
+  // Auto-redirect free users to upgrade page when accessing certain features
+  if (userId && !isUpgradeRoute(req)) {
+    const userRole = sessionClaims?.metadata?.role
+    const pathname = req.nextUrl.pathname
+    
+    // Redirect to upgrade if free user tries to access premium features
+    const premiumPaths = [
+      '/dashboard/strategies',
+      '/dashboard/backtest',
+      '/dashboard/bot',
+      '/dashboard/analytics'
+    ]
+    
+    if (premiumPaths.some(path => pathname.startsWith(path)) && 
+        (!userRole || userRole === 'user')) {
+      return Response.redirect(new URL('/dashboard/upgrade', req.url))
     }
   }
 })
